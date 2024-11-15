@@ -13,11 +13,21 @@ ETAPAS DEL CODIGO
 import random
 import time  # Importar el módulo para medir el tiempo
 import sys
-
+import copy
 # ========================
 # Funciones de utilidades
 # ========================
-
+def barra_de_carga(iterable, total, prefix='', length=40, fill='█'):
+    """Muestra una barra de carga en la terminal en la misma línea."""
+    percent = (len(iterable) / total)
+    filled_length = int(length * percent)
+    bar = fill * filled_length + '-' * (length - filled_length)
+    sys.stdout.write(f'\r{prefix} |{bar}| {percent * 100:.1f}% Completado')
+    sys.stdout.flush()
+    
+# ========================
+# Creacion y armado del tablero
+# ========================
 def crear_tablero_sudoku_vacio():
     return [[0 for _ in range(9)] for _ in range(9)]
 
@@ -29,127 +39,14 @@ def imprimir_tablero(tablero):
         for j in range(9):
             if j % 3 == 0 and j != 0:
                 print("|", end=" ")
-            print(tablero[i][j] if tablero[i][j] != 0 else ".", end=" ")
+            # Verifica si la celda actual está en CELDAS_JUGABLES
+            if (i, j) in CELDAS_JUGABLES:
+                # Código ANSI para texto amarillo
+                print(f"\033[93m{tablero[i][j] if tablero[i][j] != 0 else '.'}\033[0m", end=" ")
+            else:
+                print(tablero[i][j] if tablero[i][j] != 0 else ".", end=" ")
         print()
 
-def barra_de_carga(iterable, total, prefix='', length=40, fill='█'):
-    """Muestra una barra de carga en la terminal en la misma línea."""
-    percent = (len(iterable) / total)
-    filled_length = int(length * percent)
-    bar = fill * filled_length + '-' * (length - filled_length)
-    sys.stdout.write(f'\r{prefix} |{bar}| {percent * 100:.1f}% Completado')
-    sys.stdout.flush()
-
-# ========================
-# Generación y Resolución
-# ========================
-
-# Verificar si un número es válido en la posición (fila, col)
-def es_valido(tablero, fila, col, num):
-    """Verifica si un número es válido en la posición dada."""
-    # Verificar fila
-    if num in tablero[fila]:
-        return False
-    
-    # Verificar columna
-    for i in range(9):
-        if tablero[i][col] == num:
-            return False
-    
-    # Verificar bloque de 3x3
-    # Obtener las coordenadas de inicio del bloque de 3x3
-    fila_inicio = (fila // 3) * 3  # Fila de inicio del bloque 3x3
-    col_inicio = (col // 3) * 3    # Columna de inicio del bloque 3x3
-    
-    # Comprobar todas las celdas dentro del bloque 3x3
-    for i in range(fila_inicio, fila_inicio + 3):
-        for j in range(col_inicio, col_inicio + 3):
-            if tablero[i][j] == num:
-                return False
-    
-    return True
-
-def es_valido_sudoku(tablero):
-    # Verificar que cada fila contiene números del 1 al 9 sin repeticiones
-    for fila in tablero:
-        if not es_valido_conjunto(fila):
-            return False
-    
-    # Verificar que cada columna contiene números del 1 al 9 sin repeticiones
-    for col in range(9):
-        columna = [tablero[fila][col] for fila in range(9)]
-        if not es_valido_conjunto(columna):
-            return False
-    
-    # Verificar que cada subcuadrante 3x3 contiene números del 1 al 9 sin repeticiones
-    for i in range(0, 9, 3):
-        for j in range(0, 9, 3):
-            subcuadrante = []
-            for fila in range(i, i + 3):
-                for col in range(j, j + 3):
-                    subcuadrante.append(tablero[fila][col])
-            if not es_valido_conjunto(subcuadrante):
-                return False
-    
-    return True
-
-def es_valido_conjunto(celdas):
-    # Filtra ceros (o espacios vacíos) si el tablero está incompleto
-    celdas = [celda for celda in celdas if celda != 0]
-    return len(celdas) == len(set(celdas))
-
-#SECUENCIAL
-# Resolver Sudoku usando backtracking puro
-def resolver_backtracking_puro(tablero):
-    global PASOS_ATRAS # variable global
-    for fila in range(9):
-        for col in range(9):
-            if tablero[fila][col] == 0:   # Si la celda está vacía
-                for num in range(1, 10):  # Probar los números del 1 al 9                        
-                    if es_valido(tablero, fila, col, num):  # Si el número es válido
-                        tablero[fila][col] = num  # Colocamos el número
-                        if resolver_backtracking_puro(tablero):  # Llamada recursiva
-                            return True
-                        else: # si uno de los nodos dio falso en su resolucion, volvemos atras
-                            PASOS_ATRAS += 1
-                        tablero[fila][col] = 0  #  volvemos atras Deshacer (retroceder)
-                return False  # Si no encontramos una solución válida, retrocedemos
-    return True  # Si hemos llenado todo el tablero correctamente
-
-# Resolver Sudoku usando backtracking con ramificación
-def resolver_backtracking_con_ramificacion(tablero):
-    global PASOS_ATRAS
-    celda = encontrar_celda_mas_restringida(tablero)
-    if not celda:
-        return True
-    fila, col = celda
-    for num in range(1, 10):
-        if es_valido(tablero, fila, col, num):
-            tablero[fila][col] = num
-            if resolver_backtracking_con_ramificacion(tablero):
-                return True
-            else:
-                PASOS_ATRAS += 1
-            tablero[fila][col] = 0
-    return False
-
-# Resolver Sudoku usando backtracking con poda
-def resolver_backtracking_con_poda(tablero):
-    global PASOS_ATRAS
-    celda = encontrar_celda_mas_restringida(tablero)
-    if not celda:
-        return True
-    fila, col = celda
-    for num in obtener_opciones_validas(tablero, fila, col):
-        tablero[fila][col] = num
-        if resolver_backtracking_con_poda(tablero):
-            return True
-        else:
-            PASOS_ATRAS += 1
-        tablero[fila][col] = 0
-    return False
-
-#ALEATORIO
 # Resolver Sudoku usando backtracking puro de forma aleatoria
 def resolver_aleatorio_backtracking_puro(tablero):
     for fila in range(9):
@@ -201,28 +98,6 @@ def resolver_aleatorio_backtracking_con_poda(tablero):
         tablero[fila][col] = 0
     return False
 
-# Encontrar la celda con el menor número de opciones posibles
-def encontrar_celda_mas_restringida(tablero):
-    min_opciones = 10
-    mejor_celda = None
-    for fila in range(9):
-        for col in range(9):
-            if tablero[fila][col] == 0:
-                opciones = len(obtener_opciones_validas(tablero, fila, col))
-                if opciones < min_opciones:
-                    min_opciones = opciones
-                    mejor_celda = (fila, col)
-    return mejor_celda
-
-# Obtener lista de números válidos para una celda específica
-def obtener_opciones_validas(tablero, fila, col):
-    opciones = set(range(1, 10)) # Inicia conjunto de opciones (todas las posibles, del 1 al 9)
-    opciones -= set(tablero[fila]) # Quita de las opciones los números que ya están en la fila.
-    opciones -= {tablero[i][col] for i in range(9)} # Quita los que ya están en la columna
-    fila_inicio_cuadrante, col_inicio_cuadrante = (fila // 3) * 3, (col // 3) * 3 # Obtener coordenadas  del cuadrante
-    opciones -= {tablero[i][j] for i in range(fila_inicio_cuadrante, fila_inicio_cuadrante + 3) for j in range(col_inicio_cuadrante, col_inicio_cuadrante + 3)} # Quita de las opciones los valores del cuadrante
-    return list(opciones)
-
 # Función para resolver el tablero usando el algoritmo elegido
 def resolver_tablero_juego(tablero, algoritmo):
     global PASOS_ATRAS
@@ -248,38 +123,18 @@ def resolver_aleatorio_tablero_juego(tablero, algoritmo):
     else:
         print("Opción inválida.")
         return False
-
-# # Función para verificar si un tablero tiene una única solución.
-# def contar_soluciones(tablero):
-#     soluciones = [0]  # Usamos una lista para pasar la referencia por referencia
-
-#     def backtrack(tablero):
-#         if soluciones[0] > 1:
-#             return  # Si encontramos más de una solución, dejamos de buscar
-#         for fila in range(9):
-#             for col in range(9):
-#                 if tablero[fila][col] == 0:  # Celda vacía
-#                     for num in range(1, 10):
-#                         if es_valido(tablero, fila, col, num):
-#                             tablero[fila][col] = num
-#                             backtrack(tablero)
-#                             tablero[fila][col] = 0  # Deshacer el cambio
-#                     return  # Si no se puede colocar ningún número, retornamos
-#         soluciones[0] += 1  # Si llegamos aquí, encontramos una solución
-
-#     backtrack(tablero)
-# return soluciones[0]
-
+    
 # Generar un tablero completo de Sudoku (con una única solución)
-def generar_tablero_completo():
+def generar_tablero_completo(algoritmo):
     """Genera un tablero completo y válido de Sudoku."""
     tablero = crear_tablero_sudoku_vacio()
-    resolver_aleatorio_tablero_juego(tablero, 1)  # Utiliza backtracking puro
+    resolver_aleatorio_tablero_juego(tablero, algoritmo)  # Utiliza backtracking puro
     return tablero
 
 
 # Función para eliminar valores del tablero
 def eliminar_valores(tablero, celdas_a_eliminar):
+    global CELDAS_JUGABLES
     """Elimina celdas del tablero."""
     celdas = [(i, j) for i in range(9) for j in range(9)]
     random.shuffle(celdas)
@@ -291,10 +146,153 @@ def eliminar_valores(tablero, celdas_a_eliminar):
 
         fila, col = celdas[i]
         tablero[fila][col] = 0
+        CELDAS_JUGABLES.append((fila,col))
 
     sys.stdout.write('\n')  # Para mover el cursor a la siguiente línea después de la barra
 
     return tablero
+
+# ========================
+# Validacion
+# ========================
+
+# Verificar si un número es válido en la posición (fila, col)
+def es_valido(tablero, fila, col, num):
+    """Verifica si un número es válido en la posición dada."""
+    # Verificar fila
+    if num in tablero[fila]:
+        return False
+    
+    # Verificar columna
+    for i in range(9):
+        if tablero[i][col] == num:
+            return False
+    
+    # Verificar bloque de 3x3
+    # Obtener las coordenadas de inicio del bloque de 3x3
+    fila_inicio = (fila // 3) * 3  # Fila de inicio del bloque 3x3
+    col_inicio = (col // 3) * 3    # Columna de inicio del bloque 3x3
+    
+    # Comprobar todas las celdas dentro del bloque 3x3
+    for i in range(fila_inicio, fila_inicio + 3):
+        for j in range(col_inicio, col_inicio + 3):
+            if tablero[i][j] == num:
+                return False
+    
+    return True
+
+def es_valido_sudoku(tablero, validarCeros = True):
+    # Verificar que cada fila contiene números del 1 al 9 sin repeticiones
+    for fila in tablero:
+        if validarCeros and 0 in fila:
+            return False
+        if not es_valido_conjunto(fila):
+            return False
+    
+    # Verificar que cada columna contiene números del 1 al 9 sin repeticiones
+    for col in range(9):
+        columna = [tablero[fila][col] for fila in range(9)]
+        if not es_valido_conjunto(columna):
+            return False
+    
+    # Verificar que cada subcuadrante 3x3 contiene números del 1 al 9 sin repeticiones
+    for i in range(0, 9, 3):
+        for j in range(0, 9, 3):
+            subcuadrante = []
+            for fila in range(i, i + 3):
+                for col in range(j, j + 3):
+                    subcuadrante.append(tablero[fila][col])
+            if not es_valido_conjunto(subcuadrante):
+                return False
+    
+    return True
+
+def es_valido_conjunto(celdas):
+    # Filtra ceros (o espacios vacíos) si el tablero está incompleto
+    celdas = [celda for celda in celdas if celda != 0]
+    return len(celdas) == len(set(celdas))
+
+def es_modificable(posicion, CELDAS_JUGABLES):
+    """Verifica si una posición está entre las celdas eliminadas y es modificable."""
+    return posicion in CELDAS_JUGABLES
+
+# ========================
+#  Resolución
+# ========================
+# Resolver Sudoku usando backtracking puro
+def resolver_backtracking_puro(tablero):
+    global PASOS_ATRAS # variable global
+    for fila in range(9):
+        for col in range(9):
+            if tablero[fila][col] == 0:   # Si la celda está vacía
+                for num in range(1, 10):  # Probar los números del 1 al 9                        
+                    if es_valido(tablero, fila, col, num):  # Si el número es válido
+                        tablero[fila][col] = num  # Colocamos el número
+                        if resolver_backtracking_puro(tablero):  # Llamada recursiva
+                            return True
+                        else: # si uno de los nodos dio falso en su resolucion, volvemos atras
+                            PASOS_ATRAS += 1
+                        tablero[fila][col] = 0  #  volvemos atras Deshacer (retroceder)
+                return False  # Si no encontramos una solución válida, retrocedemos
+    return True  # Si hemos llenado todo el tablero correctamente
+
+# Resolver Sudoku usando backtracking con ramificación
+def resolver_backtracking_con_ramificacion(tablero):
+    global PASOS_ATRAS
+    celda = encontrar_celda_mas_restringida(tablero)
+    if not celda:
+        return True
+    fila, col = celda
+    for num in range(1, 10):
+        if es_valido(tablero, fila, col, num):
+            tablero[fila][col] = num
+            if resolver_backtracking_con_ramificacion(tablero):
+                return True
+            else:
+                PASOS_ATRAS += 1
+            tablero[fila][col] = 0
+    return False
+
+# Resolver Sudoku usando backtracking con poda
+def resolver_backtracking_con_poda(tablero):
+    global PASOS_ATRAS
+    celda = encontrar_celda_mas_restringida(tablero)
+    if not celda:
+        return True
+    fila, col = celda
+    for num in obtener_opciones_validas(tablero, fila, col):
+        tablero[fila][col] = num
+        if resolver_backtracking_con_poda(tablero):
+            return True
+        else:
+            PASOS_ATRAS += 1
+        tablero[fila][col] = 0
+    return False
+
+#FUNCIONES RAMIFICACION Y BRANCH&BOUND
+# Encontrar la celda con el menor número de opciones posibles
+def encontrar_celda_mas_restringida(tablero):
+    min_opciones = 10
+    mejor_celda = None
+    for fila in range(9):
+        for col in range(9):
+            if tablero[fila][col] == 0:
+                opciones = len(obtener_opciones_validas(tablero, fila, col))
+                
+                if opciones < min_opciones: # if opciones == 1: mejoreturn 
+                    min_opciones = opciones
+                    mejor_celda = (fila, col)
+    return mejor_celda
+
+# Obtener lista de números válidos para una celda específica
+def obtener_opciones_validas(tablero, fila, col):
+    opciones = set(range(1, 10)) # Inicia conjunto de opciones (todas las posibles, del 1 al 9)
+    opciones -= set(tablero[fila]) # Quita de las opciones los números que ya están en la fila.
+    opciones -= {tablero[i][col] for i in range(9)} # Quita los que ya están en la columna
+    fila_inicio_cuadrante, col_inicio_cuadrante = (fila // 3) * 3, (col // 3) * 3 # Obtener coordenadas  del cuadrante
+    opciones -= {tablero[i][j] for i in range(fila_inicio_cuadrante, fila_inicio_cuadrante + 3) for j in range(col_inicio_cuadrante, col_inicio_cuadrante + 3)} # Quita de las opciones los valores del cuadrante
+    return list(opciones)
+
 
 # ========================
 # Funciones del Juego
@@ -338,7 +336,7 @@ def seleccionar_dificultad():
         try:
             dificultad = int(input("Seleccione dificultad (1: Fácil, 2: Normal, 3: Difícil, 4: Diabólico): "))
             if dificultad in [1, 2, 3, 4]:
-                return [20, 40, 60, 75][dificultad - 1]
+                return [2, 40, 60, 75][dificultad - 1]
             else:
                 print("Opción inválida, intente nuevamente.")
         except ValueError:
@@ -346,17 +344,22 @@ def seleccionar_dificultad():
 
 # Modo de juego: PC crea y resuelve
 def modo_pc_crea_y_resuelve(algoritmo):
-    tablero_completo = generar_tablero_completo()
+    inicio = time.time()  # Tiempo de inicio
+    tablero_completo = generar_tablero_completo(algoritmo)
+    fin = time.time()  # Tiempo de fin
+    print(f"\nTiempo en el que se generó el tablero: {fin - inicio:.4f} segundos")
     celdas_a_eliminar = seleccionar_dificultad()
-
     # Eliminar algunas celdas para permitir jugar según la dificultad respetando la Unicidad resolutiva
     inicio = time.time()  # Tiempo de inicio
     tablero_jugable = eliminar_valores(tablero_completo, celdas_a_eliminar)
     fin = time.time()  # Tiempo de fin
     print(f"\nTiempo en el que se creó el tablero: {fin - inicio:.4f} segundos")
-
+    #0.07
+    #tablero_jugable = [[5, 0, 0, 4, 0, 0, 0, 6, 0], [0, 0, 0, 0, 0, 7, 0, 0, 1], [0, 1, 0, 0, 9, 6, 0, 0, 0], [0, 9, 0, 0, 3, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 8, 0, 0, 5, 1, 0, 6], [0, 0, 0, 0, 0, 0, 4, 0, 0], [9, 0, 0, 0, 0, 0, 0, 0, 0], [4, 6, 0, 0, 2, 0, 8, 0, 9]]
+   #0.5
+    #tablero_jugable =[[4, 0, 0, 0, 9, 0, 0, 0, 0], [0, 6, 0, 0, 1, 0, 5, 0, 0], [0, 8, 0, 7, 0, 0, 0, 0, 0], [1, 3, 7, 0, 2, 0, 4, 0, 0], [0, 0, 0, 0, 0, 5, 8, 0, 0], [0, 0, 0, 0, 6, 4, 0, 0, 0], [0, 0, 0, 2, 0, 0, 0, 0, 0], [0, 2, 0, 0, 0, 3, 0, 0, 0], [0, 0, 3, 0, 4, 0, 0, 0, 0]]
     imprimir_tablero(tablero_completo)
-
+    #imprimir_tablero(tablero_jugable)
     # Medir el tiempo de resolución del tablero
     inicio = time.time()  # Tiempo de inicio
     resolver_tablero_juego(tablero_jugable, algoritmo)
@@ -366,12 +369,12 @@ def modo_pc_crea_y_resuelve(algoritmo):
     print(f"\nTiempo para resolver el tablero: {fin - inicio:.4f} segundos con {PASOS_ATRAS} retrocesos en su resolución")
     imprimir_tablero(tablero_jugable)
 
-
 # Modo de juego: PC crea tablero, jugador resuelve
 def modo_pc_crea_jugador_resuelve(algoritmo):
     tablero_completo = generar_tablero_completo()
     celdas_a_eliminar = seleccionar_dificultad()
     tablero_jugable = eliminar_valores(tablero_completo, celdas_a_eliminar)
+    tablero_jugable_PC = copy.deepcopy(tablero_jugable)
     imprimir_tablero(tablero_jugable)
     print("\nEs tu turno de resolver el tablero. ¡Buena suerte!")
 
@@ -388,14 +391,14 @@ def modo_pc_crea_jugador_resuelve(algoritmo):
                 if es_valido_sudoku(tablero_jugable):
                     print("\n¡Felicidades! El tablero está completo y tiene solución.")
                 else:
-                    print("\nEl tablero no tiene solución.")
+                    print("\nEl tablero esta incompleto o es inválido :( .")
                 print("\nTablero finalizado por el jugador:")
                 imprimir_tablero(tablero_jugable)
                 break
             elif terminar == 'pc':
-                print("\nLa computadora completará el tablero usando el algoritmo seleccionado...")
-                resolver_tablero_juego(tablero_jugable, algoritmo)
-                imprimir_tablero(tablero_jugable)
+                print("\nLa computadora resolverá el tablero usando el algoritmo seleccionado...")
+                resolver_tablero_juego(tablero_jugable_PC, algoritmo)
+                imprimir_tablero(tablero_jugable_PC)
                 break
 
         # Solicita la fila, columna y valor del usuario
@@ -403,12 +406,14 @@ def modo_pc_crea_jugador_resuelve(algoritmo):
             fila = int(input("Ingresa la fila (1-9): ")) - 1
             columna = int(input("Ingresa la columna (1-9): ")) - 1
             valor = int(input("Ingresa el valor (1-9): "))
-
+            if not es_modificable((fila,columna), CELDAS_JUGABLES):
+                print("No podes alterar una celda Original!! Proba con otra")
+                continue
             # Verifica que las coordenadas estén dentro de los límites
             if not (0 <= fila < 9 and 0 <= columna < 9 and 1 <= valor <= 9):
                 print("Coordenadas o valor fuera de rango. Inténtalo de nuevo.")
                 continue
-            
+
             # Verifica si la celda ya tiene un valor
             if tablero_jugable[fila][columna] != 0:
                 reemplazar = input("La celda ya tiene un valor. ¿Deseas reemplazarlo? (s/n): ").strip().lower()
@@ -427,18 +432,17 @@ def modo_pc_crea_jugador_resuelve(algoritmo):
         except ValueError:
             print("Entrada inválida. Asegúrate de ingresar números.")
 
-
 # Modo de juego: Jugador crea tablero, PC lo valida
 def modo_jugador_crea_pc_valida():
     tablero = crear_tablero_sudoku_vacio()
     print("Introduce el tablero de Sudoku a validar (use 0 para celdas vacías):")
     for i in range(9):
        fila = list(map(int, input(f"Fila {i+1} (9 números separados por espacio): ").split()))
-       tablero[i] = fila
+       ceros =  len([numero for numero in fila if numero != 0])
     print("\nValidando el tablero ingresado...")
     inicio = time.time()
     #if resolver_tablero_juego(tablero, algoritmo):
-    if es_valido_sudoku(tablero):
+    if es_valido_sudoku(tablero, False):
         fin = time.time()
         print(f"El tablero ingresado es válido (tiempo de validación: {fin - inicio:.4f} segundos).")
         imprimir_tablero(tablero)
@@ -446,15 +450,13 @@ def modo_jugador_crea_pc_valida():
         fin = time.time()
         print(f"El tablero ingresado es inválido (tiempo de validación: {fin - inicio:.4f} segundos).")
 
-
 # ========================
 # Programa Principal
 # ========================
 
-
 # Inicialización de variables globales
 PASOS_ATRAS = 0
-
+CELDAS_JUGABLES=[]
 # INICIO ----------------------------------------------->
 print("\n<-- B I E N V E N I D O -->")
 print("Haz empezado el juego del SUDOKU")
