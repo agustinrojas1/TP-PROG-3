@@ -14,6 +14,9 @@ import random
 import time  # Importar el módulo para medir el tiempo
 import sys
 import copy
+
+import heapq  # Para la cola de prioridad
+
 # ========================
 # Funciones de utilidades
 # ========================
@@ -63,40 +66,6 @@ def resolver_aleatorio_backtracking_puro(tablero):
                 return False
     return True
 
-# Resolver Sudoku usando backtracking con ramificación de forma aleatoria
-def resolver_aleatorio_backtracking_con_ramificacion(tablero):
-    celda = encontrar_celda_mas_restringida(tablero)
-    if not celda:
-        return True
-    fila, col = celda
-    # Probar números del 1 al 9 en orden aleatorio
-    numeros = random.sample(range(1, 10), 9)    
-    for num in numeros:
-        if es_valido(tablero, fila, col, num):
-            tablero[fila][col] = num
-            if resolver_aleatorio_backtracking_con_ramificacion(tablero):
-                return True
-            tablero[fila][col] = 0                         #Revisar
-    return False
-
-# Resolver Sudoku usando backtracking con poda de forma aleatoria
-def resolver_aleatorio_backtracking_con_poda(tablero):
-    global PASOS_ATRAS
-    celda = encontrar_celda_mas_restringida(tablero)
-    if not celda:
-        return True
-    fila, col = celda
-    opciones = obtener_opciones_validas(tablero, fila, col)
-    random.shuffle(opciones)  # Desordena las opciones para aleatoriedad
-    
-    for num in opciones:
-        tablero[fila][col] = num
-        if resolver_aleatorio_backtracking_con_poda(tablero):
-            return True
-        else:
-            PASOS_ATRAS += 1
-        tablero[fila][col] = 0
-    return False
 
 # Función para resolver el tablero usando el algoritmo elegido
 def resolver_tablero_juego(tablero, algoritmo):
@@ -105,30 +74,16 @@ def resolver_tablero_juego(tablero, algoritmo):
     if algoritmo == 1:
         return resolver_backtracking_puro(tablero)
     elif algoritmo == 2:
-        return resolver_backtracking_con_ramificacion(tablero)
-    elif algoritmo == 3:
-        return resolver_backtracking_con_poda(tablero)
+        return resolver_sudoku_bb_cotas(tablero)
     else:
         print("Opción inválida.")
         return False
-    
-# Función para resolver el tablero usando el algoritmo elegido de forma aleatoria
-def resolver_aleatorio_tablero_juego(tablero, algoritmo):
-    if algoritmo == 1:
-        return resolver_aleatorio_backtracking_puro(tablero)
-    elif algoritmo == 2:
-        return resolver_aleatorio_backtracking_con_ramificacion(tablero)
-    elif algoritmo == 3:
-        return resolver_aleatorio_backtracking_con_poda(tablero)
-    else:
-        print("Opción inválida.")
-        return False
-    
+
 # Generar un tablero completo de Sudoku (con una única solución)
 def generar_tablero_completo(algoritmo):
     """Genera un tablero completo y válido de Sudoku."""
     tablero = crear_tablero_sudoku_vacio()
-    resolver_aleatorio_tablero_juego(tablero, algoritmo)  # Utiliza backtracking puro
+    resolver_aleatorio_backtracking_puro(tablero)  # Utiliza backtracking puro
     return tablero
 
 
@@ -236,63 +191,135 @@ def resolver_backtracking_puro(tablero):
                 return False  # Si no encontramos una solución válida, retrocedemos
     return True  # Si hemos llenado todo el tablero correctamente
 
-# Resolver Sudoku usando backtracking con ramificación
-def resolver_backtracking_con_ramificacion(tablero):
-    global PASOS_ATRAS
-    celda = encontrar_celda_mas_restringida(tablero)
-    if not celda:
-        return True
-    fila, col = celda
-    for num in range(1, 10):
-        if es_valido(tablero, fila, col, num):
-            tablero[fila][col] = num
-            if resolver_backtracking_con_ramificacion(tablero):
-                return True
-            else:
-                PASOS_ATRAS += 1
-            tablero[fila][col] = 0
-    return False
 
-# Resolver Sudoku usando backtracking con poda
-def resolver_backtracking_con_poda(tablero):
-    global PASOS_ATRAS
-    celda = encontrar_celda_mas_restringida(tablero)
-    if not celda:
+# #FUNCIONES BRANCH&BOUND
+
+# Resolver Sudoku usando Branch & Bound con cotas
+def resolver_sudoku_bb_cotas(tablero):
+    global PASOS_ATRAS, CELDAS_VACIAS_MIN, CELDAS_JUGABLES
+    PASOS_ATRAS = 0
+    #CELDAS_VACIAS_MIN = contar_celdas_vacias(tablero)  # Inicializamos la cota superior
+    CELDAS_JUGABLES = [(fila, col) for fila in range(9) for col in range(9) if tablero[fila][col] == 0]
+    cola_prioridad = crear_cola_prioridad(tablero)
+    return bb_resolver_cotas(tablero, cola_prioridad, float('inf'))
+
+# Crear una cola de prioridad con las celdas más restringidas
+def crear_cola_prioridad(tablero):
+    cola_prioridad = []
+    celdas_vacias = [(fila, col) for fila in range(9) for col in range(9) if tablero[fila][col] == 0]
+
+    for fila, col in celdas_vacias:
+        if tablero[fila][col] != 0:
+            continue 
+
+        opciones = obtener_opciones_validas(tablero, fila, col)
+
+        if not opciones:  # Si no hay opciones válidas, podar esta rama
+            return []  # Detenemos y señalamos que no hay solución posible
+
+        if(len(opciones) == 1):
+            heapq.heappush(cola_prioridad, (len(opciones), -1, fila, col, opciones)) 
+            return cola_prioridad
+        elif(len(opciones) <= 6):
+            vecinos_afectados = contar_vecinos_restringidos_directo(tablero, fila, col)
+            heapq.heappush(cola_prioridad, (len(opciones), -vecinos_afectados, fila, col, opciones)) 
+
+        # opciones_validas = list(opciones)
+
+        # Simular asignaciones y validar
+        # for num in opciones_validas:
+        #     tablero[fila][col] = num  # Simulación
+
+        #     if not cota_valida(tablero):  # Verificar si deja otras celdas sin opciones
+        #         tablero[fila][col] = 0  # Deshacer
+        #         opciones.remove(num)    # Si esta opcion me lleva a una rama inválida, la elimino
+        #         continue  # No insertar esta opción
+        #     tablero[fila][col] = 0  # Deshacer
+
+        # if not opciones: 
+        #     return []
+        
+    return cola_prioridad
+
+# Resolver utilizando Branch & Bound con cotas
+def bb_resolver_cotas(tablero, cola_prioridad, cota_sup):
+    global PASOS_ATRAS, CELDAS_VACIAS_MIN
+
+    if not cola_prioridad:  # Si la cola está vacía, el tablero está completo
         return True
-    fila, col = celda
-    for num in obtener_opciones_validas(tablero, fila, col):
+
+    # Contar celdas vacías
+    celdas_vacias = contar_celdas_vacias(tablero)
+
+    # Si no hay celdas vacías, el tablero está resuelto
+    if celdas_vacias == 0:
+        return True
+
+
+    # Podar si no mejora la cota superior
+    # if celdas_vacias >= cota_sup:  # Si no reduce el número de celdas vacías
+    #     print("Se ha podado una rama")
+    #     return False
+
+    # Actualizar cota superior
+    # cota_sup_nueva= celdas_vacias
+    if celdas_vacias < cota_sup:
+        cota_sup_nueva = celdas_vacias
+
+    # Extraer la celda más restringida
+    _, _, fila, col, opciones = heapq.heappop(cola_prioridad) 
+    for num in opciones:
+        # Asignar el número a la celda
         tablero[fila][col] = num
-        if resolver_backtracking_con_poda(tablero):
-            return True
-        else:
-            PASOS_ATRAS += 1
+
+        # Actualizar la cola de prioridad
+        nueva_cola = crear_cola_prioridad(tablero)
+
+        # Verificar cotas
+        if cota_valida(tablero):  # Cota inferior
+            if bb_resolver_cotas(tablero, nueva_cola,cota_sup_nueva):  # Continuar exploración
+                return True
+
+        # bb_resolver_cotas(tablero, nueva_cola, cota_sup_nueva)
+
+        # Si no es solución, retroceder
         tablero[fila][col] = 0
+        PASOS_ATRAS += 1
+
     return False
 
-#FUNCIONES RAMIFICACION Y BRANCH&BOUND
-# Encontrar la celda con el menor número de opciones posibles
-def encontrar_celda_mas_restringida(tablero):
-    min_opciones = 10
-    mejor_celda = None
-    for fila in range(9):
-        for col in range(9):
-            if tablero[fila][col] == 0:
-                opciones = len(obtener_opciones_validas(tablero, fila, col))
-                
-                if opciones < min_opciones: # if opciones == 1: mejoreturn 
-                    min_opciones = opciones
-                    mejor_celda = (fila, col)
-    return mejor_celda
+def contar_vecinos_restringidos_directo(tablero, fila, col):
+    vecinos_restringidos = 0
+    # Contar vecinos en fila y columna
+    vecinos_restringidos += sum(1 for i in range(9) if tablero[fila][i] == 0 and i != col)
+    vecinos_restringidos += sum(1 for i in range(9) if tablero[i][col] == 0 and i != fila)
+    # Contar vecinos en el bloque 3x3
+    fila_inicio, col_inicio = (fila // 3) * 3, (col // 3) * 3
+    vecinos_restringidos += sum(
+        1 for i in range(fila_inicio, fila_inicio + 3) for j in range(col_inicio, col_inicio + 3)
+        if tablero[i][j] == 0 and i != fila and j != col
+    )
+    return vecinos_restringidos
+
+# Verificar si la cota inferior es válida
+def cota_valida(tablero):
+    for fila, col in CELDAS_JUGABLES:
+        if tablero[fila][col] == 0 and not obtener_opciones_validas(tablero, fila, col):
+            return False
+    return True
+
+# Contar celdas vacías en el tablero
+def contar_celdas_vacias(tablero):
+    return sum(1 for fila in tablero for celda in fila if celda == 0)
 
 # Obtener lista de números válidos para una celda específica
 def obtener_opciones_validas(tablero, fila, col):
-    opciones = set(range(1, 10)) # Inicia conjunto de opciones (todas las posibles, del 1 al 9)
-    opciones -= set(tablero[fila]) # Quita de las opciones los números que ya están en la fila.
-    opciones -= {tablero[i][col] for i in range(9)} # Quita los que ya están en la columna
-    fila_inicio_cuadrante, col_inicio_cuadrante = (fila // 3) * 3, (col // 3) * 3 # Obtener coordenadas  del cuadrante
-    opciones -= {tablero[i][j] for i in range(fila_inicio_cuadrante, fila_inicio_cuadrante + 3) for j in range(col_inicio_cuadrante, col_inicio_cuadrante + 3)} # Quita de las opciones los valores del cuadrante
+    opciones = set(range(1, 10))
+    opciones -= set(tablero[fila])
+    opciones -= {tablero[i][col] for i in range(9)}
+    fila_inicio, col_inicio = (fila // 3) * 3, (col // 3) * 3
+    opciones -= {tablero[i][j] for i in range(fila_inicio, fila_inicio + 3) for j in range(col_inicio, col_inicio + 3)}
     return list(opciones)
-
 
 # ========================
 # Funciones del Juego
@@ -318,12 +345,11 @@ def seleccionar_algoritmo():
     """Solicita al jugador que seleccione un algoritmo de resolución."""
     print("\nSeleccione el algoritmo de resolución:")
     print("1 - Backtracking puro")
-    print("2 - Backtracking con ramificación")
-    print("3 - Backtracking con poda")
+    print("2 - Branch & Bound")
     while True:
         try:
             algoritmo = int(input("Ingrese el número del algoritmo deseado: "))
-            if algoritmo in [1, 2, 3]:
+            if algoritmo in [1, 2]:
                 return algoritmo
             else:
                 print("Opción inválida, intente nuevamente.")
@@ -336,7 +362,7 @@ def seleccionar_dificultad():
         try:
             dificultad = int(input("Seleccione dificultad (1: Fácil, 2: Normal, 3: Difícil, 4: Diabólico): "))
             if dificultad in [1, 2, 3, 4]:
-                return [2, 40, 60, 75][dificultad - 1]
+                return [20, 40, 60, 75][dificultad - 1]
             else:
                 print("Opción inválida, intente nuevamente.")
         except ValueError:
@@ -346,20 +372,14 @@ def seleccionar_dificultad():
 def modo_pc_crea_y_resuelve(algoritmo):
     inicio = time.time()  # Tiempo de inicio
     tablero_completo = generar_tablero_completo(algoritmo)
-    fin = time.time()  # Tiempo de fin
-    print(f"\nTiempo en el que se generó el tablero: {fin - inicio:.4f} segundos")
     celdas_a_eliminar = seleccionar_dificultad()
     # Eliminar algunas celdas para permitir jugar según la dificultad respetando la Unicidad resolutiva
     inicio = time.time()  # Tiempo de inicio
     tablero_jugable = eliminar_valores(tablero_completo, celdas_a_eliminar)
     fin = time.time()  # Tiempo de fin
     print(f"\nTiempo en el que se creó el tablero: {fin - inicio:.4f} segundos")
-    #0.07
-    #tablero_jugable = [[5, 0, 0, 4, 0, 0, 0, 6, 0], [0, 0, 0, 0, 0, 7, 0, 0, 1], [0, 1, 0, 0, 9, 6, 0, 0, 0], [0, 9, 0, 0, 3, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 8, 0, 0, 5, 1, 0, 6], [0, 0, 0, 0, 0, 0, 4, 0, 0], [9, 0, 0, 0, 0, 0, 0, 0, 0], [4, 6, 0, 0, 2, 0, 8, 0, 9]]
-   #0.5
-    #tablero_jugable =[[4, 0, 0, 0, 9, 0, 0, 0, 0], [0, 6, 0, 0, 1, 0, 5, 0, 0], [0, 8, 0, 7, 0, 0, 0, 0, 0], [1, 3, 7, 0, 2, 0, 4, 0, 0], [0, 0, 0, 0, 0, 5, 8, 0, 0], [0, 0, 0, 0, 6, 4, 0, 0, 0], [0, 0, 0, 2, 0, 0, 0, 0, 0], [0, 2, 0, 0, 0, 3, 0, 0, 0], [0, 0, 3, 0, 4, 0, 0, 0, 0]]
     imprimir_tablero(tablero_completo)
-    #imprimir_tablero(tablero_jugable)
+
     # Medir el tiempo de resolución del tablero
     inicio = time.time()  # Tiempo de inicio
     resolver_tablero_juego(tablero_jugable, algoritmo)
