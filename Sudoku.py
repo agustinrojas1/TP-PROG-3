@@ -1,21 +1,9 @@
-"""
-ETAPAS DEL CODIGO 
-1- Generación del tablero completo: 
-    resolver_tablero: Esta función usa backtracking para resolver el tablero de Sudoku, llenando todas las celdas de manera que cumpla con las reglas del Sudoku. Esta es una manera común de generar un tablero completo y válido.
-    generar_tablero_completo: Genera un tablero completo utilizando resolver_tablero, lo que asegura que el tablero tiene una solución válida y única.
-    Eliminación de celdas:
-
-2- eliminar_valores: Después de tener un tablero completo, esta función elimina un número determinado de celdas de manera aleatoria (el parámetro celdas_a_eliminar controla cuántas celdas se eliminan). De esta forma, el tablero sigue siendo resoluble, pero el jugador tiene que completar las celdas vacías.
-    
-3- Garantía de jugabilidad Como primero generamos un tablero completo y después eliminamos celdas, nos aseguramos de que el tablero tenga una única solución y sea resoluble.
-"""
-
 import random
 import time  # Importar el módulo para medir el tiempo
 import sys
 import copy
-import timeit
 import heapq  # Para la cola de prioridad
+import matplotlib.pyplot as plt
 
 # ========================
 # Funciones de utilidades
@@ -537,7 +525,7 @@ def generar_pruebas_rendimiento():
             tablero_test = eliminar_valores(tablero_prueba, celdas_eliminadas)
             
             # Medir tiempo backtracking
-            global NODOS_EXPLORADOS  # Asegurarse de usar la variable global
+            global NODOS_EXPLORADOS
             tablero_bt = copy.deepcopy(tablero_test)
             inicio_bt = time.time()
             resolver_backtracking_puro(tablero_bt)
@@ -545,7 +533,7 @@ def generar_pruebas_rendimiento():
             tiempos_backtracking.append((celdas_eliminadas, (tiempo_bt-inicio_bt), NODOS_EXPLORADOS))
 
             # Medir tiempo Branch & Bound
-            NODOS_EXPLORADOS = 0  # Reiniciar el contador para B&B
+            NODOS_EXPLORADOS = 0
             tablero_bb = copy.deepcopy(tablero_test)
             inicio_bb = time.time()
             resolver_sudoku_bb_cotas(tablero_bb)
@@ -611,47 +599,81 @@ def tiene_solucion_unica(tablero):
 
 def analizar_resultados(tiempos_bt, tiempos_bb, resultados_unicidad):
     """
-    Analiza y muestra los resultados de las pruebas.
+    Analiza y muestra los resultados de las pruebas, y genera gráficos.
     """
     print("\nResultados del análisis:")
     
-    # Análisis de tiempos
+    # Análisis de tiempos y nodos
     tiempos_por_celdas_bt = {}
     tiempos_por_celdas_bb = {}
-    nodos_por_celdas_bt = {}  
-    nodos_por_celdas_bb = {}  
+    nodos_por_celdas_bt = {}
+    nodos_por_celdas_bb = {}
 
-    for celdas, tiempo, nodos in tiempos_bt: 
+    for celdas, tiempo, nodos in tiempos_bt:
         if celdas not in tiempos_por_celdas_bt:
             tiempos_por_celdas_bt[celdas] = []
-            nodos_por_celdas_bt[celdas] = [] 
+            nodos_por_celdas_bt[celdas] = []
         tiempos_por_celdas_bt[celdas].append(tiempo)
-        nodos_por_celdas_bt[celdas].append(nodos) 
+        nodos_por_celdas_bt[celdas].append(nodos)
 
-    
     for celdas, tiempo, nodos in tiempos_bb:
         if celdas not in tiempos_por_celdas_bb:
             tiempos_por_celdas_bb[celdas] = []
-            nodos_por_celdas_bb[celdas] = [] 
+            nodos_por_celdas_bb[celdas] = []
         tiempos_por_celdas_bb[celdas].append(tiempo)
-        nodos_por_celdas_bb[celdas].append(nodos) 
-    
+        nodos_por_celdas_bb[celdas].append(nodos)
+
+    # Preparar datos para gráficos
+    celdas_eliminadas = sorted(tiempos_por_celdas_bt.keys())
+    tiempos_promedio_bt = [sum(tiempos_por_celdas_bt[c]) / len(tiempos_por_celdas_bt[c]) for c in celdas_eliminadas]
+    tiempos_promedio_bb = [sum(tiempos_por_celdas_bb[c]) / len(tiempos_por_celdas_bb[c]) for c in celdas_eliminadas]
+    nodos_promedio_bt = [sum(nodos_por_celdas_bt[c]) / len(nodos_por_celdas_bt[c]) for c in celdas_eliminadas]
+    nodos_promedio_bb = [sum(nodos_por_celdas_bb[c]) / len(nodos_por_celdas_bb[c]) for c in celdas_eliminadas]
+
     print("\nTiempos promedio por número de celdas eliminadas:")
-    for celdas in sorted(tiempos_por_celdas_bt.keys()):
-        tiempo_promedio_bt = sum(tiempos_por_celdas_bt[celdas]) / len(tiempos_por_celdas_bt[celdas])
-        tiempo_promedio_bb = sum(tiempos_por_celdas_bb[celdas]) / len(tiempos_por_celdas_bb[celdas])
-        nodos_promedio_bt = sum(nodos_por_celdas_bt[celdas]) / len(nodos_por_celdas_bt[celdas])
-        nodos_promedio_bb = sum(nodos_por_celdas_bb[celdas]) / len(nodos_por_celdas_bb[celdas])
-
+    for celdas, tiempo_bt, tiempo_bb, nodos_bt, nodos_bb in zip(celdas_eliminadas, tiempos_promedio_bt, tiempos_promedio_bb, nodos_promedio_bt, nodos_promedio_bb):
         print(f"\nCeldas eliminadas: {celdas}")
-        print(f"Backtracking: {tiempo_promedio_bt:.4f} segundos")
-        print(f"Branch & Bound: {tiempo_promedio_bb:.4f} segundos")
-        print(f"Nodos explorados BT: {nodos_promedio_bt:.0f}") 
-        print(f"Nodos explorados BB: {nodos_promedio_bb:.0f}") 
-        print(f"Diferencia (BB - BT): {tiempo_promedio_bb - tiempo_promedio_bt:.4f} segundos")
-        print(f"Mejora porcentual: {((tiempo_promedio_bt - tiempo_promedio_bb) / tiempo_promedio_bt * 100):.2f}%")
+        print(f"Backtracking: {tiempo_bt:.4f} segundos")
+        print(f"Branch & Bound: {tiempo_bb:.4f} segundos")
+        print(f"Nodos explorados BT: {nodos_bt:.0f}")
+        print(f"Nodos explorados BB: {nodos_bb:.0f}")
+        print(f"Diferencia (BB - BT): {tiempo_bb - tiempo_bt:.4f} segundos")
+        print(f"Mejora porcentual: {((tiempo_bt - tiempo_bb) / tiempo_bt * 100):.2f}%")
 
-# Ejecutar las pruebas
+    # Crear gráfico de barras para tiempos de ejecución
+    plt.figure(figsize=(12, 6))
+    plt.bar([c - 0.2 for c in celdas_eliminadas], tiempos_promedio_bt, width=0.4, label='Backtracking', alpha=0.6)
+    plt.bar([c + 0.2 for c in celdas_eliminadas], tiempos_promedio_bb, width=0.4, label='Branch & Bound', alpha=0.6)
+    plt.xlabel('Celdas Eliminadas')
+    plt.ylabel('Tiempo Promedio (segundos)')
+    plt.title('Comparación de Tiempos de Ejecución')
+    plt.xticks(celdas_eliminadas)
+    plt.legend()
+    plt.show()
+
+    # Crear gráfico de barras para nodos explorados
+    plt.figure(figsize=(12, 6))
+    plt.bar([c - 0.2 for c in celdas_eliminadas], nodos_promedio_bt, width=0.4, label='Nodos BT', alpha=0.6)
+    plt.bar([c + 0.2 for c in celdas_eliminadas], nodos_promedio_bb, width=0.4, label='Nodos BB', alpha=0.6)
+    plt.xlabel('Celdas Eliminadas')
+    plt.ylabel('Nodos Explorados (promedio)')
+    plt.title('Comparación de Nodos Explorados')
+    plt.xticks(celdas_eliminadas)
+    plt.legend()
+    plt.show()
+
+    # Crear gráfico de líneas para unicidad de soluciones
+    plt.figure(figsize=(12, 6))
+    pistas = sorted(resultados_unicidad.keys())
+    unicidad = [resultados_unicidad[p] for p in pistas]
+    plt.plot(pistas, unicidad, marker='o', linestyle='-', color='b')
+    plt.xlabel('Número de Pistas')
+    plt.ylabel('Proporción de Soluciones Únicas')
+    plt.title('Unicidad de Soluciones por Número de Pistas')
+    plt.grid(True)
+    plt.show()
+
+# Modificar la función de ejecución de pruebas para incluir gráficos
 def ejecutar_pruebas_completas():
     print("Iniciando pruebas completas...")
     tiempos_bt, tiempos_bb, resultados_unicidad = generar_pruebas_rendimiento()
