@@ -14,7 +14,7 @@ import random
 import time  # Importar el módulo para medir el tiempo
 import sys
 import copy
-
+import timeit
 import heapq  # Para la cola de prioridad
 
 # ========================
@@ -209,18 +209,21 @@ def es_modificable(posicion, CELDAS_JUGABLES):
 
 # Resolver Sudoku usando backtracking puro
 def resolver_backtracking_puro(tablero):
-    global PASOS_ATRAS # variable global
+    global PASOS_ATRAS, NODOS_EXPLORADOS,SOLUCION# variable global
     for fila in range(9):
         for col in range(9):
             if tablero[fila][col] == 0:   # Si la celda está vacía
                 for num in range(1, 10):  # Probar los números del 1 al 9                        
                     if es_valido(tablero, fila, col, num):  # Si el número es válido
                         tablero[fila][col] = num  # Colocamos el número
+                        SOLUCION[(fila,col)] = num
+                        NODOS_EXPLORADOS +=1
                         if resolver_backtracking_puro(tablero):  # Llamada recursiva
                             return True
                         else: # si uno de los nodos dio falso en su resolucion, volvemos atras
                             PASOS_ATRAS += 1
                         tablero[fila][col] = 0  #  volvemos atras Deshacer (retroceder)
+                        del SOLUCION[(fila, col)]
                 return False  # Si no encontramos una solución válida, retrocedemos
     return True  # Si hemos llenado todo el tablero correctamente
 
@@ -229,12 +232,12 @@ def resolver_backtracking_puro(tablero):
 
 # Resolver Sudoku usando Branch & Bound con cotas
 def resolver_sudoku_bb_cotas(tablero):
-    global PASOS_ATRAS, CELDAS_VACIAS_MIN, CELDAS_JUGABLES
+    global PASOS_ATRAS, CELDAS_JUGABLES
     PASOS_ATRAS = 0
-    #CELDAS_VACIAS_MIN = contar_celdas_vacias(tablero)  # Inicializamos la cota superior
     CELDAS_JUGABLES = [(fila, col) for fila in range(9) for col in range(9) if tablero[fila][col] == 0]
+    cota_superior = float('inf')
     cola_prioridad = crear_cola_prioridad(tablero)
-    return bb_resolver_cotas(tablero, cola_prioridad, float('inf'))
+    return bb_resolver_cotas(tablero, cola_prioridad, cota_superior)
 
 # Crear una cola de prioridad con las celdas más restringidas
 def crear_cola_prioridad(tablero):
@@ -260,53 +263,75 @@ def crear_cola_prioridad(tablero):
         
     return cola_prioridad
 
-    
-# Resolver utilizando Branch & Bound con cotas
-def bb_resolver_cotas(tablero, cola_prioridad, cota_sup):
-    global PASOS_ATRAS, CELDAS_VACIAS_MIN
+def calcular_cota_superior(tablero):
+    """
+    Calcula una cota superior basada en:
+    - El número de celdas vacías
+    - La complejidad de completar esas celdas considerando restricciones
+    """
+    celdas_vacias = contar_celdas_vacias(tablero)
+    if celdas_vacias == 0:
+        return 0
 
-    if not cola_prioridad:  # Si la cola está vacía, el tablero está completo
-        return True
+    # Calculamos el factor de ramificación máximo
+    max_opciones = 0
+    total_restricciones = 0
+    for i in range(9):
+        for j in range(9):
+            if tablero[i][j] == 0:
+                opciones = len(obtener_opciones_validas(tablero, i, j))
+                if opciones == 0:
+                    return float('inf')  # No hay solución posible
+                max_opciones = max(max_opciones, opciones)
+                total_restricciones += contar_vecinos_restringidos_directo(tablero, i, j)
+
+    # La cota superior considera tanto las opciones como las restricciones
+    return celdas_vacias * max_opciones + total_restricciones
+
+# Resolver utilizando Branch & Bound con cotas
+def bb_resolver_cotas(tablero, cola_prioridad, mejor_cota):
+    global PASOS_ATRAS, NODOS_EXPLORADOS,SOLUCION
 
     # Contar celdas vacías
     celdas_vacias = contar_celdas_vacias(tablero)
 
-    # Si no hay celdas vacías, el tablero está resuelto
+    # Si no hay celdas vacías, el tablero está completo
     if celdas_vacias == 0:
-        return True
+        return True  # No necesitamos recalcular la cota
 
+    # Si la cola está vacía pero aún hay celdas vacías, el tablero no tiene solución
+    if not cola_prioridad:
+        return False
 
-    # Podar si no mejora la cota superior
-    # if celdas_vacias >= cota_sup:  # Si no reduce el número de celdas vacías
-    #     print("Se ha podado una rama")
-    #     return False
+    # Calculamos la cota superior para este estado
+    cota_actual = calcular_cota_superior(tablero)
 
-    # Actualizar cota superior
-    # cota_sup_nueva= celdas_vacias
-    if celdas_vacias < cota_sup:
-        cota_sup_nueva = celdas_vacias
+    # Si la cota actual es peor que la mejor conocida, podamos esta rama
+    if cota_actual >= mejor_cota:
+        return False
+    
+    # Extraer la celda más prometedora
+    _, _, fila, col, opciones = heapq.heappop(cola_prioridad)
 
-    # Extraer la celda más restringida
-    _, _, fila, col, opciones = heapq.heappop(cola_prioridad) 
     for num in opciones:
         # Asignar el número a la celda
         tablero[fila][col] = num
+        SOLUCION[(fila,col)] = num
+        NODOS_EXPLORADOS += 1 
 
         # Actualizar la cola de prioridad
         nueva_cola = crear_cola_prioridad(tablero)
 
-        # Verificar cotas
-        if cota_valida(tablero):  # Cota inferior
-            if bb_resolver_cotas(tablero, nueva_cola,cota_sup_nueva):  # Continuar exploración
-                return True
-
-        # bb_resolver_cotas(tablero, nueva_cola, cota_sup_nueva)
+        if bb_resolver_cotas(tablero, nueva_cola, cota_actual):
+            return True
 
         # Si no es solución, retroceder
         tablero[fila][col] = 0
+        del SOLUCION[(fila, col)]
         PASOS_ATRAS += 1
 
     return False
+
 
 def contar_vecinos_restringidos_directo(tablero, fila, col):
     vecinos_restringidos = 0
@@ -320,13 +345,6 @@ def contar_vecinos_restringidos_directo(tablero, fila, col):
         if tablero[i][j] == 0 and i != fila and j != col
     )
     return vecinos_restringidos
-
-# Verificar si la cota inferior es válida
-def cota_valida(tablero):
-    for fila, col in CELDAS_JUGABLES:
-        if tablero[fila][col] == 0 and not obtener_opciones_validas(tablero, fila, col):
-            return False
-    return True
 
 # Contar celdas vacías en el tablero
 def contar_celdas_vacias(tablero):
@@ -351,10 +369,11 @@ def seleccionar_modo():
     print("1 - Generación y resolución automática por la PC")
     print("2 - Generación automática por la PC y resolución manual por el jugador")
     print("3 - Generación manual por el jugador y validación automática por la PC")
+    print("4 - Ejecutar los tests")
     while True:
         try:
             modo = int(input("Ingrese el número del modo deseado: "))
-            if modo in [1, 2, 3]:
+            if modo in [1, 2, 3, 4]:
                 return modo
             else:
                 print("Modo inválido, intente nuevamente.")
@@ -382,7 +401,7 @@ def seleccionar_dificultad():
         try:
             dificultad = int(input("Seleccione dificultad (1: Fácil, 2: Normal, 3: Difícil): "))
             if dificultad in [1, 2, 3]:
-                return [random.randint(31, 41), random.randint(41, 51), random.randint(51, 64)][dificultad - 1]
+                return [random.randint(31, 41), random.randint(41, 51), random.randint(51, 63)][dificultad - 1]
             else:
                 print("Opción inválida, intente nuevamente.")
         except ValueError:
@@ -400,14 +419,17 @@ def modo_pc_crea_y_resuelve(algoritmo):
     print(f"\nTiempo en el que se creó el tablero: {fin - inicio:.4f} segundos")
 
     imprimir_tablero(tablero_completo)
-
-    # Medir el tiempo de resolución del tablero
+    tablero_jugable = [[0, 0, 3, 0, 0, 0, 0, 1, 0], [0, 0, 1, 0, 7, 0, 6, 0, 0], [0, 0, 5, 3, 0, 8, 7, 0, 0], [0, 3, 0, 0, 0, 0, 1, 0, 9], [0, 0, 0, 0, 0, 0, 0, 3, 0], [4, 0, 2, 0, 0, 9, 0, 0, 0], [0, 2, 0, 0, 0, 3, 0, 9, 0], [8, 9, 0, 0, 0, 0, 0, 6, 0], [0, 0, 0, 6, 0, 0, 0, 0, 4]]
+     # Medir el tiempo de resolución del tablero
     inicio = time.time()  # Tiempo de inicio
     resolver_tablero_juego(tablero_jugable, algoritmo)
     fin = time.time()  # Tiempo de fin
 
     # Imprimir el tiempo que tardó en resolver el tablero
     print(f"\nTiempo para resolver el tablero: {fin - inicio:.4f} segundos con {PASOS_ATRAS} retrocesos en su resolución")
+    print(f"\nSe han explorado {NODOS_EXPLORADOS} NODOS para llegar a la solucion")
+    camino = " ---> ".join([f"({fila}, {col}): {valor}" for (fila, col), valor in SOLUCION.items()])
+    print("Camino de solución:\n" + camino)
     imprimir_tablero(tablero_jugable)
 
 
@@ -493,12 +515,148 @@ def modo_jugador_crea_pc_valida():
         print(f"El tablero ingresado es inválido (tiempo de validación: {fin - inicio:.4f} segundos).")
 
 # ========================
+# Pruebas
+# ========================
+
+def generar_pruebas_rendimiento():
+    """
+    Genera una serie de pruebas para comparar los algoritmos y analizar unicidad de soluciones.
+    """
+    num_pruebas = 10  # Número de tableros a probar para cada configuración
+    tiempos_backtracking = []
+    tiempos_bb = []
+    resultados_unicidad = {i: 0 for i in range(17, 82)}  # 17 es el mínimo teórico para unicidad
+    
+    print("\nIniciando pruebas de rendimiento...")
+    
+    # Pruebas de velocidad
+    for i in range(num_pruebas):
+        print(f"-----PRUEBA NUMERO {i+1}------")
+        tablero_original = generar_tablero_completo()
+        
+        # Prueba con diferentes números de celdas eliminadas
+        for celdas_eliminadas in [20, 30, 40, 50, 60]:
+            tablero_prueba = copy.deepcopy(tablero_original)
+            tablero_test = eliminar_valores(tablero_prueba, celdas_eliminadas)
+            
+            # Medir tiempo backtracking
+            tablero_bt = copy.deepcopy(tablero_test)
+            inicio_bt = time.time()
+            resolver_backtracking_puro(tablero_bt)
+            tiempo_bt = time.time()
+            tiempos_backtracking.append((celdas_eliminadas, (tiempo_bt-inicio_bt)))
+
+            # Medir tiempo Branch & Bound
+            tablero_bb = copy.deepcopy(tablero_test)
+            inicio_bb = time.time()
+            resolver_sudoku_bb_cotas(tablero_bb)
+            tiempo_bb = time.time()
+            tiempos_bb.append((celdas_eliminadas, (tiempo_bb - inicio_bb)))
+            
+            print(f"\nPrueba con {celdas_eliminadas} celdas eliminadas:")
+            print(f"Backtracking: {(tiempo_bt-inicio_bt):.4f} segundos")
+            print(f"Branch & Bound: {(tiempo_bb - inicio_bb):.4f} segundos")
+            print(tablero_prueba)
+
+    # Prueba de unicidad de solución
+    print("\nAnalizando unicidad de soluciones...")
+    for pistas in range(81, 16, -1):  # De más pistas a menos
+        soluciones_unicas = 0
+        for _ in range(5):  # 5 tableros por cada cantidad de pistas
+            tablero_original = generar_tablero_completo()
+            tablero_prueba = copy.deepcopy(tablero_original)
+            celdas_a_eliminar = 81 - pistas
+            tablero_test = eliminar_valores(tablero_prueba, celdas_a_eliminar)
+            
+            if tiene_solucion_unica(tablero_test):
+                soluciones_unicas += 1
+        
+        resultados_unicidad[pistas] = soluciones_unicas / 5  # Proporción de soluciones únicas
+        print(f"Pistas: {pistas}, Proporción de soluciones únicas: {resultados_unicidad[pistas]:.2f}")
+        
+        # Si encontramos el punto donde todas las soluciones son únicas, podemos parar
+        if resultados_unicidad[pistas] == 1.0 and resultados_unicidad.get(pistas - 1, 0) < 1.0:
+            print(f"\nUmbral de unicidad encontrado en aproximadamente {pistas} pistas")
+            break
+
+    return tiempos_backtracking, tiempos_bb, resultados_unicidad
+
+def tiene_solucion_unica(tablero):
+    """
+    Verifica si un tablero tiene solución única contando el número de soluciones posibles.
+    Retorna True si solo hay una solución, False en caso contrario.
+    """
+    soluciones = [0]  # Usamos una lista para poder modificarla en la función recursiva
+    
+    def contar_soluciones(tablero):
+        if soluciones[0] > 1:  # Si ya encontramos más de una solución, no seguimos buscando
+            return
+            
+        if es_valido_sudoku(tablero, True):
+            soluciones[0] += 1
+            return
+            
+        for i in range(9):
+            for j in range(9):
+                if tablero[i][j] == 0:
+                    for num in range(1, 10):
+                        if es_valido(tablero, i, j, num):
+                            tablero[i][j] = num
+                            contar_soluciones(tablero)
+                            tablero[i][j] = 0
+                    return
+    
+    tablero_copia = copy.deepcopy(tablero)
+    contar_soluciones(tablero_copia)
+    return soluciones[0] == 1
+
+def analizar_resultados(tiempos_bt, tiempos_bb, resultados_unicidad):
+    """
+    Analiza y muestra los resultados de las pruebas.
+    """
+    print("\nResultados del análisis:")
+    
+    # Análisis de tiempos
+    tiempos_por_celdas_bt = {}
+    tiempos_por_celdas_bb = {}
+    
+    for celdas, tiempo in tiempos_bt:
+        if celdas not in tiempos_por_celdas_bt:
+            tiempos_por_celdas_bt[celdas] = []
+        tiempos_por_celdas_bt[celdas].append(tiempo)
+    
+    for celdas, tiempo in tiempos_bb:
+        if celdas not in tiempos_por_celdas_bb:
+            tiempos_por_celdas_bb[celdas] = []
+        tiempos_por_celdas_bb[celdas].append(tiempo)
+    
+    print("\nTiempos promedio por número de celdas eliminadas:")
+    for celdas in sorted(tiempos_por_celdas_bt.keys()):
+        tiempo_promedio_bt = sum(tiempos_por_celdas_bt[celdas]) / len(tiempos_por_celdas_bt[celdas])
+        tiempo_promedio_bb = sum(tiempos_por_celdas_bb[celdas]) / len(tiempos_por_celdas_bb[celdas])
+        print(f"\nCeldas eliminadas: {celdas}")
+        print(f"Backtracking: {tiempo_promedio_bt:.4f} segundos")
+        print(f"Branch & Bound: {tiempo_promedio_bb:.4f} segundos")
+        print(f"Diferencia (BB - BT): {tiempo_promedio_bb - tiempo_promedio_bt:.4f} segundos")
+        print(f"Mejora porcentual: {((tiempo_promedio_bt - tiempo_promedio_bb) / tiempo_promedio_bt * 100):.2f}%")
+
+# Ejecutar las pruebas
+def ejecutar_pruebas_completas():
+    print("Iniciando pruebas completas...")
+    tiempos_bt, tiempos_bb, resultados_unicidad = generar_pruebas_rendimiento()
+    analizar_resultados(tiempos_bt, tiempos_bb, resultados_unicidad)
+
+# ========================
 # Programa Principal
 # ========================
 
 # Inicialización de variables globales
 PASOS_ATRAS = 0
+NODOS_EXPLORADOS= 0
+DISTINTAS_SOLUCIONES=0
 CELDAS_JUGABLES=[]
+SOLUCION = {}
+
 
 # INICIO ----------------------------------------------->
 print("\n<-- B I E N V E N I D O -->")
@@ -514,5 +672,7 @@ elif modo_juego == 2:
     modo_pc_crea_jugador_resuelve(algoritmo_resolucion)
 elif modo_juego == 3:
     modo_jugador_crea_pc_valida()
+elif modo_juego == 4:
+    ejecutar_pruebas_completas()
 else:
     print("Modo de juego no válido.")
