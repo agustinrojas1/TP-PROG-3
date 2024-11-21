@@ -417,9 +417,7 @@ def modo_pc_crea_y_resuelve(algoritmo):
     tablero_jugable = eliminar_valores(tablero_completo, celdas_a_eliminar)
     fin = time.time()  # Tiempo de fin
     print(f"\nTiempo en el que se creó el tablero: {fin - inicio:.4f} segundos")
-
     imprimir_tablero(tablero_completo)
-    tablero_jugable = [[0, 0, 3, 0, 0, 0, 0, 1, 0], [0, 0, 1, 0, 7, 0, 6, 0, 0], [0, 0, 5, 3, 0, 8, 7, 0, 0], [0, 3, 0, 0, 0, 0, 1, 0, 9], [0, 0, 0, 0, 0, 0, 0, 3, 0], [4, 0, 2, 0, 0, 9, 0, 0, 0], [0, 2, 0, 0, 0, 3, 0, 9, 0], [8, 9, 0, 0, 0, 0, 0, 6, 0], [0, 0, 0, 6, 0, 0, 0, 0, 4]]
      # Medir el tiempo de resolución del tablero
     inicio = time.time()  # Tiempo de inicio
     resolver_tablero_juego(tablero_jugable, algoritmo)
@@ -533,29 +531,30 @@ def generar_pruebas_rendimiento():
     for i in range(num_pruebas):
         print(f"-----PRUEBA NUMERO {i+1}------")
         tablero_original = generar_tablero_completo()
-        
         # Prueba con diferentes números de celdas eliminadas
         for celdas_eliminadas in [20, 30, 40, 50, 60]:
             tablero_prueba = copy.deepcopy(tablero_original)
             tablero_test = eliminar_valores(tablero_prueba, celdas_eliminadas)
             
             # Medir tiempo backtracking
+            global NODOS_EXPLORADOS  # Asegurarse de usar la variable global
             tablero_bt = copy.deepcopy(tablero_test)
             inicio_bt = time.time()
             resolver_backtracking_puro(tablero_bt)
             tiempo_bt = time.time()
-            tiempos_backtracking.append((celdas_eliminadas, (tiempo_bt-inicio_bt)))
+            tiempos_backtracking.append((celdas_eliminadas, (tiempo_bt-inicio_bt), NODOS_EXPLORADOS))
 
             # Medir tiempo Branch & Bound
+            NODOS_EXPLORADOS = 0  # Reiniciar el contador para B&B
             tablero_bb = copy.deepcopy(tablero_test)
             inicio_bb = time.time()
             resolver_sudoku_bb_cotas(tablero_bb)
             tiempo_bb = time.time()
-            tiempos_bb.append((celdas_eliminadas, (tiempo_bb - inicio_bb)))
+            tiempos_bb.append((celdas_eliminadas, (tiempo_bb - inicio_bb), NODOS_EXPLORADOS))
             
             print(f"\nPrueba con {celdas_eliminadas} celdas eliminadas:")
-            print(f"Backtracking: {(tiempo_bt-inicio_bt):.4f} segundos")
-            print(f"Branch & Bound: {(tiempo_bb - inicio_bb):.4f} segundos")
+            print(f"Backtracking: {(tiempo_bt-inicio_bt):.4f} segundos, Nodos explorados: {tiempos_backtracking[-1][2]}")
+            print(f"Branch & Bound: {(tiempo_bb - inicio_bb):.4f} segundos, Nodos explorados: {tiempos_bb[-1][2]}")
             print(tablero_prueba)
 
     # Prueba de unicidad de solución
@@ -619,24 +618,36 @@ def analizar_resultados(tiempos_bt, tiempos_bb, resultados_unicidad):
     # Análisis de tiempos
     tiempos_por_celdas_bt = {}
     tiempos_por_celdas_bb = {}
-    
-    for celdas, tiempo in tiempos_bt:
+    nodos_por_celdas_bt = {}  
+    nodos_por_celdas_bb = {}  
+
+    for celdas, tiempo, nodos in tiempos_bt: 
         if celdas not in tiempos_por_celdas_bt:
             tiempos_por_celdas_bt[celdas] = []
+            nodos_por_celdas_bt[celdas] = [] 
         tiempos_por_celdas_bt[celdas].append(tiempo)
+        nodos_por_celdas_bt[celdas].append(nodos) 
+
     
-    for celdas, tiempo in tiempos_bb:
+    for celdas, tiempo, nodos in tiempos_bb:
         if celdas not in tiempos_por_celdas_bb:
             tiempos_por_celdas_bb[celdas] = []
+            nodos_por_celdas_bb[celdas] = [] 
         tiempos_por_celdas_bb[celdas].append(tiempo)
+        nodos_por_celdas_bb[celdas].append(nodos) 
     
     print("\nTiempos promedio por número de celdas eliminadas:")
     for celdas in sorted(tiempos_por_celdas_bt.keys()):
         tiempo_promedio_bt = sum(tiempos_por_celdas_bt[celdas]) / len(tiempos_por_celdas_bt[celdas])
         tiempo_promedio_bb = sum(tiempos_por_celdas_bb[celdas]) / len(tiempos_por_celdas_bb[celdas])
+        nodos_promedio_bt = sum(nodos_por_celdas_bt[celdas]) / len(nodos_por_celdas_bt[celdas])
+        nodos_promedio_bb = sum(nodos_por_celdas_bb[celdas]) / len(nodos_por_celdas_bb[celdas])
+
         print(f"\nCeldas eliminadas: {celdas}")
         print(f"Backtracking: {tiempo_promedio_bt:.4f} segundos")
         print(f"Branch & Bound: {tiempo_promedio_bb:.4f} segundos")
+        print(f"Nodos explorados BT: {nodos_promedio_bt:.0f}") 
+        print(f"Nodos explorados BB: {nodos_promedio_bb:.0f}") 
         print(f"Diferencia (BB - BT): {tiempo_promedio_bb - tiempo_promedio_bt:.4f} segundos")
         print(f"Mejora porcentual: {((tiempo_promedio_bt - tiempo_promedio_bb) / tiempo_promedio_bt * 100):.2f}%")
 
