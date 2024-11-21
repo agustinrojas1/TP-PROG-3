@@ -62,7 +62,7 @@ def resolver_aleatorio_backtracking_puro(tablero):
                         tablero[fila][col] = num
                         if resolver_aleatorio_backtracking_puro(tablero):
                             return True
-                        tablero[fila][col] = 0              #Revisar
+                        tablero[fila][col] = 0              
                 return False
     return True
 
@@ -80,30 +80,62 @@ def resolver_tablero_juego(tablero, algoritmo):
         return False
 
 # Generar un tablero completo de Sudoku (con una única solución)
-def generar_tablero_completo(algoritmo):
+def generar_tablero_completo():
     """Genera un tablero completo y válido de Sudoku."""
     tablero = crear_tablero_sudoku_vacio()
     resolver_aleatorio_backtracking_puro(tablero)  # Utiliza backtracking puro
     return tablero
 
 
+def contar_soluciones(tablero):
+    """
+    Cuenta cuántas soluciones tiene un tablero de Sudoku.
+    Si hay más de 1 solución, se detiene temprano.
+    """
+    soluciones = [0]  # Usamos una lista mutable para mantener el conteo
+
+    def resolver(tablero):
+        if soluciones[0] > 1:
+            #print("Se encontró mas de una solución")
+            return  # Termina si encuentra más de 1 solución
+        for fila in range(9):
+            for col in range(9):
+                if tablero[fila][col] == 0:
+                    for num in range(1, 10):
+                        if es_valido(tablero, fila, col, num):
+                            tablero[fila][col] = num
+                            resolver(tablero)
+                            tablero[fila][col] = 0
+                    return
+        soluciones[0] += 1
+
+    resolver(tablero)
+    return soluciones[0]
+
 # Función para eliminar valores del tablero
 def eliminar_valores(tablero, celdas_a_eliminar):
+    """
+    Elimina celdas garantizando que el tablero tenga una única solución.
+    """
     global CELDAS_JUGABLES
-    """Elimina celdas del tablero."""
+    CELDAS_JUGABLES = []
     celdas = [(i, j) for i in range(9) for j in range(9)]
     random.shuffle(celdas)
 
-    #For para barra de carga (No es necesario)
-    for i in range(celdas_a_eliminar):          
-        # Mostrar barra de carga después de cada eliminación
-        barra_de_carga(range(i + 1), celdas_a_eliminar, prefix='Creando Tablero de Juego')
+    for fila, col in celdas:
+        if celdas_a_eliminar <= 0:
+            break
 
-        fila, col = celdas[i]
+        # Guardar el valor original de la celda
+        valor_original = tablero[fila][col]
         tablero[fila][col] = 0
-        CELDAS_JUGABLES.append((fila,col))
 
-    sys.stdout.write('\n')  # Para mover el cursor a la siguiente línea después de la barra
+        # Verificar unicidad
+        if contar_soluciones([fila[:] for fila in tablero]) == 1:
+            CELDAS_JUGABLES.append((fila, col))  # Registrar la celda eliminada
+            celdas_a_eliminar -= 1
+        else:
+            tablero[fila][col] = valor_original  # Restaurar el valor original si no es único
 
     return tablero
 
@@ -174,6 +206,7 @@ def es_modificable(posicion, CELDAS_JUGABLES):
 # ========================
 #  Resolución
 # ========================
+
 # Resolver Sudoku usando backtracking puro
 def resolver_backtracking_puro(tablero):
     global PASOS_ATRAS # variable global
@@ -192,7 +225,7 @@ def resolver_backtracking_puro(tablero):
     return True  # Si hemos llenado todo el tablero correctamente
 
 
-# #FUNCIONES BRANCH&BOUND
+#FUNCIONES BRANCH & BOUND
 
 # Resolver Sudoku usando Branch & Bound con cotas
 def resolver_sudoku_bb_cotas(tablero):
@@ -217,30 +250,17 @@ def crear_cola_prioridad(tablero):
         if not opciones:  # Si no hay opciones válidas, podar esta rama
             return []  # Detenemos y señalamos que no hay solución posible
 
-        if(len(opciones) == 1):
-            heapq.heappush(cola_prioridad, (len(opciones), -1, fila, col, opciones)) 
+        num_opciones = len(opciones)
+        if num_opciones == 1:
+            heapq.heappush(cola_prioridad, (num_opciones, -1000, fila, col, opciones))
             return cola_prioridad
-        elif(len(opciones) <= 6):
+        elif (len(opciones) <= 6):
             vecinos_afectados = contar_vecinos_restringidos_directo(tablero, fila, col)
             heapq.heappush(cola_prioridad, (len(opciones), -vecinos_afectados, fila, col, opciones)) 
-
-        # opciones_validas = list(opciones)
-
-        # Simular asignaciones y validar
-        # for num in opciones_validas:
-        #     tablero[fila][col] = num  # Simulación
-
-        #     if not cota_valida(tablero):  # Verificar si deja otras celdas sin opciones
-        #         tablero[fila][col] = 0  # Deshacer
-        #         opciones.remove(num)    # Si esta opcion me lleva a una rama inválida, la elimino
-        #         continue  # No insertar esta opción
-        #     tablero[fila][col] = 0  # Deshacer
-
-        # if not opciones: 
-        #     return []
         
     return cola_prioridad
 
+    
 # Resolver utilizando Branch & Bound con cotas
 def bb_resolver_cotas(tablero, cola_prioridad, cota_sup):
     global PASOS_ATRAS, CELDAS_VACIAS_MIN
@@ -360,9 +380,9 @@ def seleccionar_dificultad():
     """Solicita al jugador que seleccione la dificultad del juego."""
     while True:
         try:
-            dificultad = int(input("Seleccione dificultad (1: Fácil, 2: Normal, 3: Difícil, 4: Diabólico): "))
-            if dificultad in [1, 2, 3, 4]:
-                return [20, 40, 60, 75][dificultad - 1]
+            dificultad = int(input("Seleccione dificultad (1: Fácil, 2: Normal, 3: Difícil): "))
+            if dificultad in [1, 2, 3]:
+                return [random.randint(31, 41), random.randint(41, 51), random.randint(51, 64)][dificultad - 1]
             else:
                 print("Opción inválida, intente nuevamente.")
         except ValueError:
@@ -371,13 +391,14 @@ def seleccionar_dificultad():
 # Modo de juego: PC crea y resuelve
 def modo_pc_crea_y_resuelve(algoritmo):
     inicio = time.time()  # Tiempo de inicio
-    tablero_completo = generar_tablero_completo(algoritmo)
+    tablero_completo = generar_tablero_completo()
     celdas_a_eliminar = seleccionar_dificultad()
     # Eliminar algunas celdas para permitir jugar según la dificultad respetando la Unicidad resolutiva
     inicio = time.time()  # Tiempo de inicio
     tablero_jugable = eliminar_valores(tablero_completo, celdas_a_eliminar)
     fin = time.time()  # Tiempo de fin
     print(f"\nTiempo en el que se creó el tablero: {fin - inicio:.4f} segundos")
+
     imprimir_tablero(tablero_completo)
 
     # Medir el tiempo de resolución del tablero
@@ -388,6 +409,7 @@ def modo_pc_crea_y_resuelve(algoritmo):
     # Imprimir el tiempo que tardó en resolver el tablero
     print(f"\nTiempo para resolver el tablero: {fin - inicio:.4f} segundos con {PASOS_ATRAS} retrocesos en su resolución")
     imprimir_tablero(tablero_jugable)
+
 
 # Modo de juego: PC crea tablero, jugador resuelve
 def modo_pc_crea_jugador_resuelve(algoritmo):
@@ -477,6 +499,7 @@ def modo_jugador_crea_pc_valida():
 # Inicialización de variables globales
 PASOS_ATRAS = 0
 CELDAS_JUGABLES=[]
+
 # INICIO ----------------------------------------------->
 print("\n<-- B I E N V E N I D O -->")
 print("Haz empezado el juego del SUDOKU")
